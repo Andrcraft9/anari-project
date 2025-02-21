@@ -1,1 +1,3 @@
 build/*
+.vscode/*
+libanari_library_helide.so
