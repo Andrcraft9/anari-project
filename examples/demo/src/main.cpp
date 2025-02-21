@@ -52,8 +52,13 @@ static T getPixelValue(uvec2 coord, int width, const T *buf)
   return buf[coord[1] * width + coord[0]];
 }
 
-int main() {
+int main(int argc, const char **argv)
+{
   printf("Hello World!\n");
+
+  (void)argc;
+  (void)argv;
+  stbi_flip_vertically_on_write(1);
 
   // image size
   uvec2 imgSize = {1024 /*width*/, 768 /*height*/};
