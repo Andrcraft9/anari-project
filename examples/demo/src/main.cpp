@@ -9,6 +9,9 @@
 #include <anari/anari_cpp.hpp>
 #include <anari/anari_cpp/ext/std.h>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
 using uvec2 = std::array<unsigned int, 2>;
 using uvec3 = std::array<unsigned int, 3>;
 using vec3 = std::array<float, 3>;
@@ -41,6 +44,12 @@ static void statusFunc(const void *userData, ANARIDevice device,
 
 static void onFrameCompletion(const void *, anari::Device d, anari::Frame f) {
   printf("anari::Device(%p) finished rendering anari::Frame(%p)!\n", d, f);
+}
+
+template <typename T>
+static T getPixelValue(uvec2 coord, int width, const T *buf)
+{
+  return buf[coord[1] * width + coord[0]];
 }
 
 int main() {
@@ -165,6 +174,42 @@ int main() {
   // render one frame
   anari::render(d, frame);
   anari::wait(d, frame);
+
+  // access frame and write its content as PNG file
+  auto fb = anari::map<uint32_t>(d, frame, "channel.color");
+  stbi_write_png("tutorial_cpp.png",
+      int(fb.width),
+      int(fb.height),
+      4,
+      fb.data,
+      4 * int(fb.width));
+  anari::unmap(d, frame, "channel.color");
+
+  printf("...done!\n");
+
+  // Check center pixel id buffers
+  auto fbPrimId = anari::map<uint32_t>(d, frame, "channel.primitiveId");
+  auto fbObjId = anari::map<uint32_t>(d, frame, "channel.objectId");
+  auto fbInstId = anari::map<uint32_t>(d, frame, "channel.instanceId");
+
+  uvec2 queryPixel = {imgSize[0] / 2, imgSize[1] / 2};
+
+  printf("checking id buffers @ [%u, %u]:\n", queryPixel[0], queryPixel[1]);
+
+  if (fbPrimId.pixelType == ANARI_UINT32) {
+    printf("    primId: %u\n",
+        getPixelValue(queryPixel, imgSize[0], fbPrimId.data));
+  }
+  if (fbObjId.pixelType == ANARI_UINT32) {
+    printf("     objId: %u\n",
+        getPixelValue(queryPixel, imgSize[0], fbObjId.data));
+  }
+  if (fbPrimId.pixelType == ANARI_UINT32) {
+    printf("    instId: %u\n",
+        getPixelValue(queryPixel, imgSize[0], fbInstId.data));
+  }
+
+  printf("\ncleaning up objects...");
 
   // final cleanups
   anari::release(d, frame);
