@@ -1,22 +1,56 @@
 #include <array>
+#include <cstdio>
 #include <thread>
 
-#include <errno.h>
-#include <stdint.h>
-#include <stdio.h>
+#include <GLFW/glfw3.h>
 
 #define ANARI_EXTENSION_UTILITY_IMPL
 #include <anari/anari_cpp.hpp>
 #include <anari/anari_cpp/ext/std.h>
 
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
+constexpr int kWidth = 640;
+constexpr int kHeight = 480;
 
 using uvec2 = std::array<unsigned int, 2>;
 using uvec3 = std::array<unsigned int, 3>;
 using vec3 = std::array<float, 3>;
 using vec4 = std::array<float, 4>;
 using box3 = std::array<vec3, 2>;
+
+static void key_callback(GLFWwindow *window, int key, int scancode, int action,
+                         int mods) {
+  if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+    glfwSetWindowShouldClose(window, GL_TRUE);
+}
+
+class DisplaySystem {
+public:
+  DisplaySystem() { glfwInit(); }
+
+  ~DisplaySystem() {
+    if (window_ != nullptr) {
+      glfwDestroyWindow(window_);
+    }
+    glfwTerminate();
+  }
+
+  void CreateWindow() {
+    std::printf("Info: Creating a window\n");
+    window_ = glfwCreateWindow(kWidth, kHeight, "glfw3-window", NULL, NULL);
+    if (window_ == nullptr) {
+      const char *error_str{};
+      glfwGetError(&error_str);
+      std::printf("Error: Cannot create a window, err=%s\n", error_str);
+    }
+    glfwMakeContextCurrent(window_);
+    glfwSetKeyCallback(window_, key_callback);
+  }
+
+  GLFWwindow *Window() { return window_; }
+
+private:
+  GLFWwindow *window_{nullptr};
+};
 
 static void statusFunc(const void *userData, ANARIDevice device,
                        ANARIObject source, ANARIDataType sourceType,
@@ -28,40 +62,40 @@ static void statusFunc(const void *userData, ANARIDevice device,
   (void)sourceType;
   (void)code;
   if (severity == ANARI_SEVERITY_FATAL_ERROR) {
-    fprintf(stderr, "[FATAL] %s\n", message);
+    std::fprintf(stderr, "[FATAL] %s\n", message);
   } else if (severity == ANARI_SEVERITY_ERROR) {
-    fprintf(stderr, "[ERROR] %s\n", message);
+    std::fprintf(stderr, "[ERROR] %s\n", message);
   } else if (severity == ANARI_SEVERITY_WARNING) {
-    fprintf(stderr, "[WARN ] %s\n", message);
+    std::fprintf(stderr, "[WARN ] %s\n", message);
   } else if (severity == ANARI_SEVERITY_PERFORMANCE_WARNING) {
-    fprintf(stderr, "[PERF ] %s\n", message);
+    std::fprintf(stderr, "[PERF ] %s\n", message);
   } else if (severity == ANARI_SEVERITY_INFO) {
-    fprintf(stderr, "[INFO ] %s\n", message);
+    std::fprintf(stderr, "[INFO ] %s\n", message);
   } else if (severity == ANARI_SEVERITY_DEBUG) {
-    fprintf(stderr, "[DEBUG] %s\n", message);
+    std::fprintf(stderr, "[DEBUG] %s\n", message);
   }
 }
 
 static void onFrameCompletion(const void *, anari::Device d, anari::Frame f) {
-  printf("anari::Device(%p) finished rendering anari::Frame(%p)!\n", d, f);
+  std::printf("anari::Device(%p) finished rendering anari::Frame(%p)!\n", d, f);
 }
 
 template <typename T>
-static T getPixelValue(uvec2 coord, int width, const T *buf)
-{
+static T getPixelValue(uvec2 coord, int width, const T *buf) {
   return buf[coord[1] * width + coord[0]];
 }
 
-int main(int argc, const char **argv)
-{
-  printf("Hello World!\n");
-
+int main(int argc, const char **argv) {
   (void)argc;
   (void)argv;
-  stbi_flip_vertically_on_write(1);
+
+  std::printf("Starting the app\n");
+
+  DisplaySystem ds{};
+  ds.CreateWindow();
 
   // image size
-  uvec2 imgSize = {1024 /*width*/, 768 /*height*/};
+  uvec2 imgSize = {kWidth, kHeight};
 
   // camera
   vec3 cam_pos = {0.f, 0.f, 0.f};
@@ -79,27 +113,29 @@ int main(int argc, const char **argv)
                   {0.5f, 0.9f, 0.5f, 1.0f}};
   uvec3 index[] = {{0, 1, 2}, {1, 2, 3}};
 
-  printf("initialize ANARI...");
+  std::printf("initialize ANARI...");
   anari::Library lib = anari::loadLibrary("helide", statusFunc);
 
   anari::Extensions extensions =
       anari::extension::getDeviceExtensionStruct(lib, "default");
 
   if (!extensions.ANARI_KHR_GEOMETRY_TRIANGLE)
-    printf("WARNING: device doesn't support ANARI_KHR_GEOMETRY_TRIANGLE\n");
+    std::printf(
+        "WARNING: device doesn't support ANARI_KHR_GEOMETRY_TRIANGLE\n");
   if (!extensions.ANARI_KHR_CAMERA_PERSPECTIVE)
-    printf("WARNING: device doesn't support ANARI_KHR_CAMERA_PERSPECTIVE\n");
+    std::printf(
+        "WARNING: device doesn't support ANARI_KHR_CAMERA_PERSPECTIVE\n");
   if (!extensions.ANARI_KHR_MATERIAL_MATTE)
-    printf("WARNING: device doesn't support ANARI_KHR_MATERIAL_MATTE\n");
+    std::printf("WARNING: device doesn't support ANARI_KHR_MATERIAL_MATTE\n");
   if (!extensions.ANARI_KHR_FRAME_COMPLETION_CALLBACK) {
-    printf(
+    std::printf(
         "INFO: device doesn't support ANARI_KHR_FRAME_COMPLETION_CALLBACK\n");
   }
 
   anari::Device d = anari::newDevice(lib, "default");
 
-  printf("done!\n");
-  printf("setting up camera...");
+  std::printf("done!\n");
+  std::printf("setting up camera...");
 
   // create and setup camera
   auto camera = anari::newObject<anari::Camera>(d, "perspective");
@@ -111,8 +147,8 @@ int main(int argc, const char **argv)
   anari::commitParameters(
       d, camera); // commit objects to indicate setting parameters is done
 
-  printf("done!\n");
-  printf("setting up scene...");
+  std::printf("done!\n");
+  std::printf("setting up scene...");
 
   // The world to be populated with renderable objects
   auto world = anari::newObject<anari::World>(d);
@@ -142,9 +178,8 @@ int main(int argc, const char **argv)
 
   anari::commitParameters(d, world);
 
-  printf("done!\n");
-
-  printf("setting up renderer...");
+  std::printf("done!\n");
+  std::printf("setting up renderer...");
 
   // create renderer
   auto renderer = anari::newObject<anari::Renderer>(d, "default");
@@ -153,74 +188,75 @@ int main(int argc, const char **argv)
   anari::setParameter(d, renderer, "ambientRadiance", 1.f);
   anari::commitParameters(d, renderer);
 
-  printf("done!\n");
-
-  printf("\ncleaning up objects...");
-
-  // create and setup frame
+  // Frame
   auto frame = anari::newObject<anari::Frame>(d);
-  anari::setParameter(d, frame, "size", imgSize);
-  anari::setParameter(d, frame, "channel.color", ANARI_UFIXED8_RGBA_SRGB);
-  anari::setParameter(d, frame, "channel.primitiveId", ANARI_UINT32);
-  anari::setParameter(d, frame, "channel.objectId", ANARI_UINT32);
-  anari::setParameter(d, frame, "channel.instanceId", ANARI_UINT32);
-
   anari::setAndReleaseParameter(d, frame, "renderer", renderer);
   anari::setAndReleaseParameter(d, frame, "camera", camera);
   anari::setAndReleaseParameter(d, frame, "world", world);
-
   anari::setParameter(d, frame, "frameCompletionCallback",
                       (anari::FrameCompletionCallback)onFrameCompletion);
-
   anari::commitParameters(d, frame);
 
-  printf("rendering frame to tutorial_cpp.png...\n");
+  // Render loop
+  while (!glfwWindowShouldClose(ds.Window())) {
+    int width, height;
+    glfwGetFramebufferSize(ds.Window(), &width, &height);
+    imgSize[0] = width;
+    imgSize[1] = height;
 
-  // render one frame
-  anari::render(d, frame);
-  anari::wait(d, frame);
+    // Create and setup frame
+    anari::setParameter(d, frame, "size", imgSize);
+    anari::setParameter(d, frame, "channel.color", ANARI_UFIXED8_RGBA_SRGB);
+    anari::setParameter(d, frame, "channel.primitiveId", ANARI_UINT32);
+    anari::setParameter(d, frame, "channel.objectId", ANARI_UINT32);
+    anari::setParameter(d, frame, "channel.instanceId", ANARI_UINT32);
+    anari::commitParameters(d, frame);
 
-  // access frame and write its content as PNG file
-  auto fb = anari::map<uint32_t>(d, frame, "channel.color");
-  stbi_write_png("tutorial_cpp.png",
-      int(fb.width),
-      int(fb.height),
-      4,
-      fb.data,
-      4 * int(fb.width));
-  anari::unmap(d, frame, "channel.color");
+    // Render frame
+    anari::render(d, frame);
+    anari::wait(d, frame);
 
-  printf("...done!\n");
+    auto fb = anari::map<uint32_t>(d, frame, "channel.color");
 
-  // Check center pixel id buffers
-  auto fbPrimId = anari::map<uint32_t>(d, frame, "channel.primitiveId");
-  auto fbObjId = anari::map<uint32_t>(d, frame, "channel.objectId");
-  auto fbInstId = anari::map<uint32_t>(d, frame, "channel.instanceId");
+    glViewport(0, 0, width, height);
+    glClearColor(0.3F, 0.3F, 0.3F, 1.0F);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDrawPixels(width, height, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV, fb.data);
+    glfwSwapBuffers(ds.Window());
 
-  uvec2 queryPixel = {imgSize[0] / 2, imgSize[1] / 2};
+    anari::unmap(d, frame, "channel.color");
 
-  printf("checking id buffers @ [%u, %u]:\n", queryPixel[0], queryPixel[1]);
+    // Check center pixel id buffers
+    auto fbPrimId = anari::map<uint32_t>(d, frame, "channel.primitiveId");
+    auto fbObjId = anari::map<uint32_t>(d, frame, "channel.objectId");
+    auto fbInstId = anari::map<uint32_t>(d, frame, "channel.instanceId");
 
-  if (fbPrimId.pixelType == ANARI_UINT32) {
-    printf("    primId: %u\n",
-        getPixelValue(queryPixel, imgSize[0], fbPrimId.data));
+    uvec2 queryPixel = {imgSize[0] / 2, imgSize[1] / 2};
+
+    std::printf("checking id buffers @ [%u, %u]:\n", queryPixel[0],
+                queryPixel[1]);
+    if (fbPrimId.pixelType == ANARI_UINT32) {
+      std::printf("    primId: %u\n",
+                  getPixelValue(queryPixel, imgSize[0], fbPrimId.data));
+    }
+    if (fbObjId.pixelType == ANARI_UINT32) {
+      std::printf("     objId: %u\n",
+                  getPixelValue(queryPixel, imgSize[0], fbObjId.data));
+    }
+    if (fbPrimId.pixelType == ANARI_UINT32) {
+      std::printf("    instId: %u\n",
+                  getPixelValue(queryPixel, imgSize[0], fbInstId.data));
+    }
+
+    glfwPollEvents();
   }
-  if (fbObjId.pixelType == ANARI_UINT32) {
-    printf("     objId: %u\n",
-        getPixelValue(queryPixel, imgSize[0], fbObjId.data));
-  }
-  if (fbPrimId.pixelType == ANARI_UINT32) {
-    printf("    instId: %u\n",
-        getPixelValue(queryPixel, imgSize[0], fbInstId.data));
-  }
 
-  printf("\ncleaning up objects...");
-
-  // final cleanups
+  // Final cleanups
+  std::printf("\ncleaning up objects...");
   anari::release(d, frame);
   anari::release(d, d);
   anari::unloadLibrary(lib);
 
-  printf("done!\n");
+  std::printf("done!\n");
   return 0;
 }
