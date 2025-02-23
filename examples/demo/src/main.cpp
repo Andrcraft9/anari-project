@@ -1,4 +1,6 @@
 #include <array>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <thread>
 
@@ -106,7 +108,7 @@ int main(int argc, const char **argv) {
   vec3 vertex[] = {{-1.0f, -1.0f, 3.0f},
                    {-1.0f, 1.0f, 3.0f},
                    {1.0f, -1.0f, 3.0f},
-                   {0.1f, 0.1f, 0.3f}};
+                   {1.0f, 1.0f, 3.0f}};
   vec4 color[] = {{0.9f, 0.5f, 0.5f, 1.0f},
                   {0.8f, 0.8f, 0.8f, 1.0f},
                   {0.8f, 0.8f, 0.8f, 1.0f},
@@ -144,8 +146,7 @@ int main(int argc, const char **argv) {
   anari::setParameter(d, camera, "position", cam_pos);
   anari::setParameter(d, camera, "direction", cam_view);
   anari::setParameter(d, camera, "up", cam_up);
-  anari::commitParameters(
-      d, camera); // commit objects to indicate setting parameters is done
+  anari::commitParameters(d, camera);
 
   std::printf("done!\n");
   std::printf("setting up scene...");
@@ -198,11 +199,28 @@ int main(int argc, const char **argv) {
   anari::commitParameters(d, frame);
 
   // Render loop
+  const auto start_time = std::chrono::steady_clock::now();
   while (!glfwWindowShouldClose(ds.Window())) {
+    const float time{std::chrono::duration_cast<std::chrono::duration<float>>(
+                         std::chrono::steady_clock::now() - start_time)
+                         .count()};
+
     int width, height;
     glfwGetFramebufferSize(ds.Window(), &width, &height);
     imgSize[0] = width;
     imgSize[1] = height;
+
+    // Update color
+    color[0][0] = std::sin(time);
+    color[3][0] = std::cos(time);
+    anari::setParameterArray1D(d, mesh, "vertex.color", color, 4);
+    anari::commitParameters(d, mesh);
+
+    // Update camera
+    vec3 new_cam_pos = cam_pos;
+    new_cam_pos[1] = std::sin(time);
+    anari::setParameter(d, camera, "position", new_cam_pos);
+    anari::commitParameters(d, camera);
 
     // Create and setup frame
     anari::setParameter(d, frame, "size", imgSize);
