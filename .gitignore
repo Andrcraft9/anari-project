@@ -1,3 +1,4 @@
 build/*
 .vscode/*
 libanari_library_helide.so
+libanari_library_visgl.so

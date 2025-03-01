@@ -44,7 +44,7 @@ static void statusFunc(const void *userData, ANARIDevice device,
 }
 
 static void onFrameCompletion(const void *, anari::Device d, anari::Frame f) {
-  std::printf("anari::Device(%p) finished rendering anari::Frame(%p)!\n", d, f);
+  //std::printf("anari::Device(%p) finished rendering anari::Frame(%p)!\n", d, f);
 }
 
 template <typename T>
@@ -70,7 +70,7 @@ public:
   void Init() {
     std::printf("Initializing ANARI\n");
     std::printf("Loading a library\n");
-    library_ = anari::loadLibrary("helide", statusFunc);
+    library_ = anari::loadLibrary("visgl", statusFunc);
 
     std::printf("Creating a device\n");
     anari::Extensions extensions =
