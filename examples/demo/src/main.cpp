@@ -2,7 +2,13 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <string>
 #include <thread>
+#include <utility>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 #include <GLFW/glfw3.h>
 
@@ -15,6 +21,7 @@ constexpr int kHeight = 480;
 
 using uvec2 = std::array<unsigned int, 2>;
 using uvec3 = std::array<unsigned int, 3>;
+using vec2 = std::array<float, 2>;
 using vec3 = std::array<float, 3>;
 using vec4 = std::array<float, 4>;
 using box3 = std::array<vec3, 2>;
@@ -52,9 +59,45 @@ static T getPixelValue(uvec2 coord, int width, const T *buf) {
   return buf[coord[1] * width + coord[0]];
 }
 
+class ImageLoader {
+public:
+  struct Image final {
+    std::int32_t size_x{};
+    std::int32_t size_y{};
+    std::int32_t components{};
+    unsigned char* data{};
+  };
+
+  ImageLoader() = default;
+
+  ~ImageLoader() {
+    for (auto& image: images_) {
+      stbi_image_free(image.data);
+    }
+  }
+
+  ImageLoader(const ImageLoader&) = delete;
+  ImageLoader(ImageLoader&&) = delete;
+  ImageLoader& operator=(const ImageLoader&) = delete;
+  ImageLoader& operator=(ImageLoader&&) = delete;
+
+  Image Load(const std::filesystem::path path) {
+    Image image{};
+    image.data =
+        stbi_load(path.c_str(), &image.size_x, &image.size_y, &image.components, 0);
+    std::printf("Image: x=%d, y=%d, c=%d, ptr=%p\n", image.size_x, image.size_y, image.components, image.data);
+    images_.push_back(image);
+    return image;
+  }
+
+private:
+  std::vector<Image> images_{};
+};
+
 class RenderSystem {
 public:
   RenderSystem() = default;
+
   ~RenderSystem() {
     if (device_ && frame_) {
       anari::release(device_, frame_);
@@ -66,6 +109,11 @@ public:
       anari::unloadLibrary(library_);
     }
   }
+
+  RenderSystem(const RenderSystem&) = delete;
+  RenderSystem(RenderSystem&&) = delete;
+  RenderSystem& operator=(const RenderSystem&) = delete;
+  RenderSystem& operator=(RenderSystem&&) = delete;
 
   void Init() {
     std::printf("Initializing ANARI\n");
@@ -105,7 +153,7 @@ public:
     // camera
     camera_position_ = {0.0F, 0.0F, 0.0F};
     camera_up_ = {0.0F, 1.0F, 0.0F};
-    camera_direction_ = {0.1F, 0.0F, 1.0F};
+    camera_direction_ = {0.0F, 0.0F, 1.0F};
 
     // create and setup camera
     camera_ = anari::newObject<anari::Camera>(device_, "perspective");
@@ -117,15 +165,12 @@ public:
     anari::commitParameters(device_, camera_);
 
     // triangle mesh array
-    vec3 vertex[] = {{-1.0f, -1.0f, 3.0f},
-                     {-1.0f, 1.0f, 3.0f},
-                     {1.0f, -1.0f, 3.0f},
-                     {1.0f, 1.0f, 3.0f}};
-    vec4 color[] = {{0.9f, 0.5f, 0.5f, 1.0f},
-                    {0.8f, 0.8f, 0.8f, 1.0f},
-                    {0.8f, 0.8f, 0.8f, 1.0f},
-                    {0.5f, 0.9f, 0.5f, 1.0f}};
-    uvec3 index[] = {{0, 1, 2}, {1, 2, 3}};
+    vec3 vertex[4] = {{-1.0F, -1.0F, 3.0F},
+                     {-1.0F, 1.0F, 3.0F},
+                     {1.0F, -1.0F, 3.0F},
+                     {1.0F, 1.0F, 3.0F}};
+    vec2 uv[4] = {{1.0F, 1.0F}, {1.0F, 0.0F}, {0.0F, 1.0F}, {0.0F, 0.0F}};
+    uvec3 index[2] = {{0, 1, 2}, {1, 2, 3}};
 
     // The world to be populated with renderable objects
     world_ = anari::newObject<anari::World>(device_);
@@ -133,12 +178,34 @@ public:
     // create and setup surface and mesh
     auto mesh = anari::newObject<anari::Geometry>(device_, "triangle");
     anari::setParameterArray1D(device_, mesh, "vertex.position", vertex, 4);
-    anari::setParameterArray1D(device_, mesh, "vertex.color", color, 4);
+    anari::setParameterArray1D(device_, mesh, "vertex.attribute0", uv, 4);
     anari::setParameterArray1D(device_, mesh, "primitive.index", index, 2);
     anari::commitParameters(device_, mesh);
 
+    ImageLoader il{};
+    const auto image = il.Load("data/photo.jpg");
+
+    auto sampler = anari::newObject<anari::Sampler>(device_, "image2D");
+    switch (image.components) {
+    case 3U: {
+      anari::setParameterArray2D(device_, sampler, "image", ANARI_UFIXED8_VEC3,
+                                 image.data, image.size_x, image.size_y);
+      break;
+    }
+    case 4U: {
+      anari::setParameterArray2D(device_, sampler, "image", ANARI_UFIXED8_VEC4,
+                                 image.data, image.size_x, image.size_y);
+      break;
+    }
+    default: {
+      std::printf("Error: Unsupported image format, c=%d\n", image.components);
+      break;
+    }
+    }
+    anari::commitParameters(device_, sampler);
+
     auto mat = anari::newObject<anari::Material>(device_, "matte");
-    anari::setParameter(device_, mat, "color", "color");
+    anari::setParameter(device_, mat, "color", sampler);
     anari::commitParameters(device_, mat);
 
     // put the mesh into a surface
@@ -231,6 +298,11 @@ public:
       glfwDestroyWindow(window_);
     }
   }
+
+  WindowWrapper(const WindowWrapper&) = delete;
+  WindowWrapper(WindowWrapper&&) = delete;
+  WindowWrapper& operator=(const WindowWrapper&) = delete;
+  WindowWrapper& operator=(WindowWrapper&&) = delete;
 
   GLFWwindow *Window() { return window_; }
 
